@@ -123,17 +123,17 @@ PROCESS_THREAD(cc2531_rf_sniffer, ev, data)
   int pkt_size = 0;
   packet_t *p_pkt;
 
-	PROCESS_BEGIN();
+  PROCESS_BEGIN();
 
-	/* Init netstack */
+  /* Init netstack */
   radio_init();
   radio_set_channel(11);
   radio_enable_sniffer();
 
-	while(1)
-	{
+  while(1)
+  {
     if (radio_got_packet())
-		{
+    {
       pkt_size = radio_read_packet(packet_buf, 256);
       if (pkt_size > 0)
       {
@@ -146,11 +146,11 @@ PROCESS_THREAD(cc2531_rf_sniffer, ev, data)
           process_post(&cc2531_usb_demo_process, event_packet_received, p_pkt);
         }
       }
-		}
-		PROCESS_PAUSE();
-	}
+    }
+    PROCESS_PAUSE();
+  }
 
-	PROCESS_END();
+  PROCESS_END();
 
 }
 
