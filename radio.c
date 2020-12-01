@@ -7,11 +7,13 @@ void radio_init(void)
 {
   /* Configure radio state. */
   g_radio_state.channel = RADIO_DEFAULT_CHANNEL;
-  g_radio_state.sniffer_enabled = SNIFFER_OFF;
 
   /* Initialize CC2531 Radio peripheral. */
   NETSTACK_RADIO.init();
   radio_set_channel(g_radio_state.channel);
+
+  /* Disable radio. */
+  radio_disable_sniffer();
 }
 
 int radio_set_channel(int channel)
@@ -66,4 +68,9 @@ int radio_got_packet(void)
 int radio_read_packet(void *p_packet_buffer, int max_packet_length)
 {
   return NETSTACK_RADIO.read(p_packet_buffer, max_packet_length);
+}
+
+int radio_is_sniffer_enabled(void)
+{
+  return g_radio_state.sniffer_enabled;
 }

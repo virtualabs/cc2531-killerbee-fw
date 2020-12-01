@@ -43,6 +43,7 @@
 
 #include <stdlib.h>
 #include "contiki.h"
+#include "net/packetbuf.h"
 #include "dev/leds.h"
 #include "debug.h"
 #include "radio.h"
@@ -51,16 +52,14 @@
 
 #define CC2530_RF_CHANNEL 11
 
+/* Packet buffer size: 256 - 3 bytes (length, command, crc). */
+#define PACKET_BUFFER_SIZE  (256-3)
+
 extern process_event_t kb_event_message;
 
-static unsigned char packet_buf[256];
-
-static unsigned char tx_packet[] = "\x08\x28\x61\xe4\xae\x49\x11\x92\x01\xe5\x0e\x69\x00\x10\x56\x49\x52\x54\x55\x39\x00";
-static int tx_packet_size = 21;
+static unsigned char packet_buf[PACKET_BUFFER_SIZE];
 
 /*---------------------------------------------------------------------------*/
-static struct etimer et;
-static uint16_t count;
 extern process_event_t serial_line_event_message;
 static process_event_t event_packet_received;
 
@@ -109,6 +108,30 @@ void dispatch_command(kb_event_t *p_event)
           proto_send_ack(CMD_SEND_PKT);
         }
       }
+      break;
+
+    case CMD_SNIFF_ON:
+      {
+        /* Enable sniffer. */
+        radio_enable_sniffer();
+
+        /* Send ACK. */
+        proto_send_ack(CMD_SNIFF_ON_ACK);
+      }
+      break;
+
+    case CMD_SNIFF_OFF:
+      {
+        /* Enable sniffer. */
+        radio_disable_sniffer();
+
+        /* Send ACK. */
+        proto_send_ack(CMD_SNIFF_OFF_ACK);
+      }
+      break;
+
+    default:
+      break;
 
   }
 }
@@ -128,21 +151,26 @@ PROCESS_THREAD(cc2531_rf_sniffer, ev, data)
   /* Init netstack */
   radio_init();
   radio_set_channel(11);
-  radio_enable_sniffer();
+  //radio_enable_sniffer();
 
   while(1)
   {
     if (radio_got_packet())
     {
-      pkt_size = radio_read_packet(packet_buf, 256);
+      pkt_size = radio_read_packet(&packet_buf[2], PACKET_BUFFER_SIZE);
       if (pkt_size > 0)
       {
+        /* Insert RSSI and LQI. */
+        packet_buf[0] = packetbuf_attr(PACKETBUF_ATTR_RSSI);
+        packet_buf[1] = packetbuf_attr(PACKETBUF_ATTR_LINK_QUALITY);
+
+        /* Report packet. */
         p_pkt = (packet_t *)malloc(sizeof(packet_t));
         if (p_pkt != NULL)
         {
           memset(p_pkt, 0, sizeof(packet_t));
           memcpy(p_pkt->payload, packet_buf, pkt_size);
-          p_pkt->size = (uint8_t)pkt_size;
+          p_pkt->size = (uint8_t)pkt_size + 2;
           process_post(&cc2531_usb_demo_process, event_packet_received, p_pkt);
         }
       }
