@@ -6,6 +6,6 @@ PROJECT_SOURCEFILES += radio.c kb-serial.c proto.c
 
 all: $(CONTIKI_PROJECT)
 
-CONTIKI = ../../..
+CONTIKI = ./contiki
 CONTIKI_WITH_RIME = 1
 include $(CONTIKI)/Makefile.include
