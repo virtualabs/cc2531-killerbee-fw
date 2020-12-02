@@ -12,7 +12,7 @@ This firmware is based on Contiki (not Contiki-ng), and uses a USB CDC serial in
 
 This firmware is designed to run on a $10 TI CC2531 USB device shown below:
 
-![TI CC2531 usb dongle](https://github.com/virtualabs/cc2531-killerbee-fw/raw/master/images/tic2531.webp "TI CC2531 Usb dongle")
+![TI CC2531 usb dongle](https://github.com/virtualabs/cc2531-killerbee-fw/blob/main/images/ticc2531.webp "TI CC2531 Usb dongle")
 
 Pre-compiled firmware
 ---------------------
