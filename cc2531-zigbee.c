@@ -75,6 +75,7 @@ void dispatch_command(kb_event_t *p_event)
       {
         /* Init radio. */
         radio_init();
+        radio_disable_sniffer();
 
         /* Send ACK. */
         proto_send_ack(CMD_INIT);
