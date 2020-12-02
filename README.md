@@ -38,6 +38,8 @@ $ cd cc2531-killerbee-fw
 $ make
 ```
 
+The firmware file will be generated and named *cc2531-bumblebee.hex*.
+
 How to install this firmware on a CC2531 USB dongle
 ---------------------------------------------------
 
