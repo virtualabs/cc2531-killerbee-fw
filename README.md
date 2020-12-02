@@ -28,7 +28,7 @@ First, you need to install the correct version of SDCC by [following these instr
 Then, clone this repository including the submodules:
 
 ```
-$ git clone --revursive https://github.com/virtualabs/cc2531-killerbee-fw.git
+$ git clone --recursive https://github.com/virtualabs/cc2531-killerbee-fw.git
 ```
 
 And build the firmware:
