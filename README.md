@@ -43,5 +43,5 @@ How to install this firmware on a CC2531 USB dongle
 
 If you own a *CC Debugger*, just [follow this tutorial](https://www.zigbee2mqtt.io/information/flashing_the_cc2531.html) and use Bumblebee firmware (.hex release) instead of ZNP.
 
-If you are looking for alternatives, [follow this other tutorial]() with Bumblebee firmware. You may need an Arduino board, an ESP8266 or a Raspberry Pi to be able to flash your CC2531 USB dongle.
+If you are looking for alternatives, [follow this other tutorial](https://www.zigbee2mqtt.io/information/alternative_flashing_methods.html) with Bumblebee firmware. You may need an Arduino board, an ESP8266 or a Raspberry Pi to be able to flash your CC2531 USB dongle.
 
