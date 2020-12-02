@@ -17,7 +17,7 @@ This firmware is designed to run on a $10 TI CC2531 USB device shown below:
 Pre-compiled firmware
 ---------------------
 
-The last compiled version of this firmware is available in the Releases section. This is the recommended way to
+The last compiled version of this firmware is available in [the Releases section](https://github.com/virtualabs/cc2531-killerbee-fw/releases). This is the recommended way to
 get a fully working and tested version of Bumblebee.
 
 Manual build
