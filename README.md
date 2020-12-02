@@ -1,7 +1,47 @@
-KillerBee-compatible firmware for TI CC2531
-===========================================
+Bumblebee, a KillerBee-compatible firmware for TI CC2531
+=========================================================
 
-This project is a work in progress.
+Introduction
+------------
 
-This firmware provides sniffing/injection capabilities to KillerBee
-for TI CC2531 USB dongles ($10). 
+Bumblebee is a specific firmware designed for Texas Instruments CC2531 RF System-on-Chip that
+allows IEEE 802.15.4 (ZigBee) packets sniffing and packet injection for RiverSecLoop's Killerbee
+framework.
+
+This firmware is based on Contiki (not Contiki-ng), and uses a USB CDC serial interface to communicate.
+
+This firmware is designed to run on a $10 TI CC2531 USB device shown below:
+
+![TI CC2531 usb dongle](https://github.com/virtualabs/cc2531-killerbee-fw/raw/master/images/tic2531.webp "TI CC2531 Usb dongle")
+
+Pre-compiled firmware
+---------------------
+
+The last compiled version of this firmware is available in the Releases section. This is the recommended way to
+get a fully working and tested version of Bumblebee.
+
+Manual build
+------------
+
+First, you need to install the correct version of SDCC by [following these instructions](http://swannonline.co.uk/?q=node/60).
+
+Then, clone this repository including the submodules:
+
+```
+$ git clone --revursive https://github.com/virtualabs/cc2531-killerbee-fw.git
+```
+
+And build the firmware:
+
+```
+$ cd cc2531-killerbee-fw
+$ make
+```
+
+How to install this firmware on a CC2531 USB dongle
+---------------------------------------------------
+
+If you own a *CC Debugger*, just [follow this tutorial](https://www.zigbee2mqtt.io/information/flashing_the_cc2531.html) and use Bumblebee firmware (.hex release) instead of ZNP.
+
+If you are looking for alternatives, [follow this other tutorial]() with Bumblebee firmware. You may need an Arduino board, an ESP8266 or a Raspberry Pi to be able to flash your CC2531 USB dongle.
+
