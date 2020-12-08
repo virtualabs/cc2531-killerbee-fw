@@ -170,7 +170,7 @@ PROCESS_THREAD(cc2531_rf_sniffer, ev, data)
         if (p_pkt != NULL)
         {
           memset(p_pkt, 0, sizeof(packet_t));
-          memcpy(p_pkt->payload, packet_buf, pkt_size);
+          memcpy(p_pkt->payload, packet_buf, pkt_size+2);
           p_pkt->size = (uint8_t)pkt_size + 2;
           process_post(&cc2531_usb_demo_process, event_packet_received, p_pkt);
         }
