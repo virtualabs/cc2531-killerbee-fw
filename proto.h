@@ -1,7 +1,7 @@
 #ifndef __INC_SERIAL_PROTO_H
 #define __INC_SERIAL_PROTO_H
 
-#include "kb-serial.h"
+#include "kb-usb.h"
 
 /**************************************************
  * Serial protocol overview

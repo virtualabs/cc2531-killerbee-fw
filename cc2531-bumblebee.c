@@ -47,7 +47,7 @@
 #include "dev/leds.h"
 #include "debug.h"
 #include "radio.h"
-#include "kb-serial.h"
+#include "kb-usb.h"
 #include "proto.h"
 
 #define CC2530_RF_CHANNEL 11
@@ -191,7 +191,7 @@ PROCESS_THREAD(cc2531_usb_demo_process, ev, data)
   packet_t *p_pkt;
   PROCESS_BEGIN();
 
-  kb_serial_init();
+  kb_usb_init();
 
   while(1) {
     PROCESS_WAIT_EVENT();
