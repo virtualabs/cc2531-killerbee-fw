@@ -69,10 +69,12 @@ void dispatch_command(kb_event_t *p_event)
   kb_event_t event;
   uint8_t channel;
 
+
   switch(p_event->command)
   {
     case CMD_INIT:
       {
+
         /* Init radio. */
         radio_init();
         radio_disable_sniffer();
@@ -139,8 +141,8 @@ void dispatch_command(kb_event_t *p_event)
 
 
 PROCESS(cc2531_rf_sniffer, "Sniffer");
-PROCESS(cc2531_usb_demo_process, "cc2531 USB Demo process");
-AUTOSTART_PROCESSES(&cc2531_usb_demo_process, &cc2531_rf_sniffer);
+PROCESS(cc2531_bumlblebee_process, "cc2531 USB Demo process");
+AUTOSTART_PROCESSES(&cc2531_bumlblebee_process, &cc2531_rf_sniffer);
 
 PROCESS_THREAD(cc2531_rf_sniffer, ev, data)
 {
@@ -172,7 +174,7 @@ PROCESS_THREAD(cc2531_rf_sniffer, ev, data)
           memset(p_pkt, 0, sizeof(packet_t));
           memcpy(p_pkt->payload, packet_buf, pkt_size+2);
           p_pkt->size = (uint8_t)pkt_size + 2;
-          process_post(&cc2531_usb_demo_process, event_packet_received, p_pkt);
+          process_post(&cc2531_bumlblebee_process, event_packet_received, p_pkt);
         }
       }
     }
@@ -185,7 +187,7 @@ PROCESS_THREAD(cc2531_rf_sniffer, ev, data)
 
 
 /*---------------------------------------------------------------------------*/
-PROCESS_THREAD(cc2531_usb_demo_process, ev, data)
+PROCESS_THREAD(cc2531_bumlblebee_process, ev, data)
 {
   kb_event_t *p_event;
   packet_t *p_pkt;
