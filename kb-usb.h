@@ -2,6 +2,14 @@
 #define __INC_USB_PROTO_H
 
 #include "contiki.h"
+
+/* 
+ * Contiki hack: load models.h before loading usb-arch.h, in this way
+ *               all USB structures will take the right values for EP2
+ *               and EP3 buffers.
+ */
+
+#include "models.h"
 #include "usb-arch.h"
 #include "dev/leds.h"
 #include "dev/leds-arch.h"
@@ -13,7 +21,7 @@
 #define EPOUT 0x03
 
 #define BUFSIZE 256
-#define BUFFER_SIZE USB_EP2_SIZE
+#define BUFFER_SIZE 64
 
 typedef enum {
   KBS_IDLE,

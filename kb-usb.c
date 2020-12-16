@@ -185,7 +185,7 @@ const struct usb_st_device_descriptor device_descriptor =
       ENDPOINT,
       0x82,
       0x02,
-      USB_EP2_SIZE,
+      /*USB_EP2_SIZE*/64,
       0
     },
     {
@@ -193,7 +193,7 @@ const struct usb_st_device_descriptor device_descriptor =
       ENDPOINT,
       0x03,
       0x02,
-      USB_EP3_SIZE,
+      /*USB_EP3_SIZE*/64,
       0
     }
   };
@@ -239,19 +239,16 @@ do_work(void)
     return;
   }
 
-
   events = usb_get_ep_events(EPOUT);
   if((events & USB_EP_EVENT_NOTIFICATION)
      && !(data_rx_urb.flags & USB_BUFFER_SUBMITTED)) {
     if(!(data_rx_urb.flags & USB_BUFFER_FAILED)) {
-      if(input_handler) {
-        uint8_t len;
-        uint8_t i;
+      uint8_t len;
+      uint8_t i;
 
-        len = BUFFER_SIZE - data_rx_urb.left;
-        for(i = 0; i < len; i++) {
-          input_handler(usb_rx_data[i]);
-        }
+      len = BUFFER_SIZE - data_rx_urb.left;
+      for(i = 0; i < len; i++) {
+        input_handler(usb_rx_data[i]);
       }
     }
     queue_rx_urb();
@@ -264,6 +261,9 @@ PROCESS_THREAD(kb_usb_process, ev, data)
 {
 
   PROCESS_BEGIN();
+
+  kb_event_message = process_alloc_event();
+  ptr = 0;
 
   //usb_setup();
   usb_set_global_event_process(&kb_usb_process);
@@ -286,5 +286,6 @@ PROCESS_THREAD(kb_usb_process, ev, data)
 
 void kb_usb_init(void)
 {
+  g_state = KBS_IDLE;
   process_start(&kb_usb_process, NULL);
 }
