@@ -1,5 +1,5 @@
-#ifndef __INC_PROTO_H
-#define __INC_PROTO_H
+#ifndef __INC_UART_PROTO_H
+#define __INC_UART_PROTO_H
 
 #include "contiki.h"
 
@@ -23,4 +23,4 @@ PROCESS_NAME(kb_serial_process);
 void kb_serial_init(void);
 void kb_serial_send(kb_event_t *p_event);
 
-#endif /* __INC_PROTO_H */
+#endif /* __INC_UART_PROTO_H */
