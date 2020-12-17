@@ -221,8 +221,7 @@ do_work(void)
 
   events = usb_get_global_events();
   if(events & USB_EVENT_CONFIG) {
-    leds_on(LEDS_GREEN);
-    
+   
     /* Enable endpoints */
     enabled = 1;
     usb_setup_bulk_endpoint(EPIN);
@@ -231,7 +230,6 @@ do_work(void)
     queue_rx_urb();
   }
   if(events & USB_EVENT_RESET) {
-    leds_off(LEDS_GREEN);
     enabled = 0;
   }
 
@@ -287,5 +285,6 @@ PROCESS_THREAD(kb_usb_process, ev, data)
 void kb_usb_init(void)
 {
   g_state = KBS_IDLE;
+  leds_off(LEDS_RED | LEDS_GREEN);
   process_start(&kb_usb_process, NULL);
 }

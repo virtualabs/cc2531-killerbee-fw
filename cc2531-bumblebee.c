@@ -50,28 +50,34 @@
 #include "kb-usb.h"
 #include "proto.h"
 
+/* Default ZigBee channel 0 on 2.4GHz page. */
 #define CC2530_RF_CHANNEL 11
 
 /* Packet buffer size: 256 - 3 bytes (length, command, crc). */
 #define PACKET_BUFFER_SIZE  (256-3)
 
-extern process_event_t kb_event_message;
-
+/* RF packet buffer. */
 static unsigned char packet_buf[PACKET_BUFFER_SIZE];
 
-/*---------------------------------------------------------------------------*/
-extern process_event_t serial_line_event_message;
+/* Contiki local events. */
 static process_event_t event_packet_received;
+extern process_event_t kb_event_message;
 
+/**
+ * dispatch_command()
+ * 
+ * @brief: Dispatch a command buffer received through USB.
+ * @param p_event: pointer to a `kb_event_t` structure filled by USB driver.
+ **/
 
 void dispatch_command(kb_event_t *p_event)
 {
-  kb_event_t event;
   uint8_t channel;
 
-
+  /* Switch on command. */
   switch(p_event->command)
   {
+    /* Initialize. */
     case CMD_INIT:
       {
 
@@ -84,6 +90,7 @@ void dispatch_command(kb_event_t *p_event)
       }
       break;
 
+    /* Change RF channel. */
     case CMD_SET_CHANNEL:
       {
         /* Check parameter size (must be 1 byte) */
@@ -99,20 +106,28 @@ void dispatch_command(kb_event_t *p_event)
       }
       break;
 
+    /* Send RF packet. */
     case CMD_SEND_PKT:
       {
         /* Packet is in payload, check size first. */
         if (p_event->payload_size > 0)
         {
+          /* Show activity. */
+          leds_on(LEDS_GREEN);
+
           /* Send packet. */
           radio_send_packet(p_event->payload, p_event->payload_size);
 
           /* Send ACK. */
           proto_send_ack(CMD_SEND_PKT);
+
+          /* Shut off LED. */
+          leds_off(LEDS_GREEN);
         }
       }
       break;
 
+    /* Start sniffer. */
     case CMD_SNIFF_ON:
       {
         /* Enable sniffer. */
@@ -123,6 +138,8 @@ void dispatch_command(kb_event_t *p_event)
       }
       break;
 
+
+    /* Stop sniffer. */
     case CMD_SNIFF_OFF:
       {
         /* Enable sniffer. */
@@ -139,11 +156,17 @@ void dispatch_command(kb_event_t *p_event)
   }
 }
 
-
+/* Defines processes. */
 PROCESS(cc2531_rf_sniffer, "Sniffer");
 PROCESS(cc2531_bumlblebee_process, "cc2531 USB Demo process");
-AUTOSTART_PROCESSES(&cc2531_bumlblebee_process, &cc2531_rf_sniffer);
 
+/**
+ * cc2531_rf_sniffer()
+ * 
+ * @brief: RF sniffer thread, sniffs packet and notify cc2531_bumblebee_process when received.
+ * @param ev: event type
+ * @param data: event data
+ **/
 PROCESS_THREAD(cc2531_rf_sniffer, ev, data)
 {
   int pkt_size = 0;
@@ -154,7 +177,6 @@ PROCESS_THREAD(cc2531_rf_sniffer, ev, data)
   /* Init netstack */
   radio_init();
   radio_set_channel(11);
-  //radio_enable_sniffer();
 
   while(1)
   {
@@ -186,7 +208,14 @@ PROCESS_THREAD(cc2531_rf_sniffer, ev, data)
 }
 
 
-/*---------------------------------------------------------------------------*/
+/**
+ * cc2531_bumblebee_process()
+ * 
+ * @brief: Main process thread, handling USB and everything.
+ * @param ev: event type
+ * @param data: event data
+ **/
+
 PROCESS_THREAD(cc2531_bumlblebee_process, ev, data)
 {
   kb_event_t *p_event;
@@ -198,9 +227,15 @@ PROCESS_THREAD(cc2531_bumlblebee_process, ev, data)
   while(1) {
     PROCESS_WAIT_EVENT();
     if (ev == event_packet_received) {
+      /* Show activity. */
+      leds_on(LEDS_GREEN);
+
       p_pkt = (packet_t *)data;
       proto_send_packet(p_pkt->payload, p_pkt->size);
       free(p_pkt);
+
+      /* Shut off LED. */
+      leds_off(LEDS_GREEN);
     } else if (ev == kb_event_message) {
       p_event = (kb_event_t *)data;
       dispatch_command(p_event);
@@ -209,3 +244,6 @@ PROCESS_THREAD(cc2531_bumlblebee_process, ev, data)
 
   PROCESS_END();
 }
+
+/* Start both processes (main routine). */
+AUTOSTART_PROCESSES(&cc2531_bumlblebee_process, &cc2531_rf_sniffer);
