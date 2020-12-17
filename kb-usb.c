@@ -221,7 +221,11 @@ do_work(void)
 
   events = usb_get_global_events();
   if(events & USB_EVENT_CONFIG) {
-   
+
+    /* Force state once the device is configured. */
+    g_state = KBS_IDLE;
+    ptr = 0;
+
     /* Enable endpoints */
     enabled = 1;
     usb_setup_bulk_endpoint(EPIN);
@@ -284,7 +288,10 @@ PROCESS_THREAD(kb_usb_process, ev, data)
 
 void kb_usb_init(void)
 {
+  /* Initialize state. */
   g_state = KBS_IDLE;
+  ptr = 0;
+
   leds_off(LEDS_RED | LEDS_GREEN);
   process_start(&kb_usb_process, NULL);
 }
