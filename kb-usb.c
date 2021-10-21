@@ -1,15 +1,22 @@
 #include "kb-usb.h"
+#include <stdlib.h>
 
 static USBBuffer data_rx_urb;
-static USBBuffer data_tx_urb;
-static USBBuffer data_tx_urb2;
-static USBBuffer data_tx_urb3;
-static uint8_t usb_rx_data[BUFFER_SIZE];
+static USBBuffer data_tx_urb[4];
+static uint8_t usb_rx_data[USB_EP3_SIZE];
 static uint8_t enabled = 0;
 
-static uint8_t buf[BUFSIZE];
+/* EP3 OUT rx buffer. */
+static uint8_t rx_buffer[RX_BUFSIZE];
 static int ptr;
 
+/* EP2 IN tx buffer. */
+static uint8_t tx_buffer[4][USB_EP2_SIZE];
+static uint8_t xmit_buf[USB_EP2_SIZE];
+
+/* EP2 packet FIFO */
+static uint8_t PKT_FIFO[PKT_FIFO_MAX];
+static int pkt_fifo_size = 0;
 
 static kb_usb_state g_state;
 static kb_event_t kb_event;
@@ -18,65 +25,73 @@ volatile uint8_t g_pkt_len;
 /* Custom event message. */
 process_event_t kb_event_message;
 
+/* Custom event message. */
+process_event_t kb_sendpkt_message;
+
 
 void kb_usb_send_bytes(uint8_t *bytes, int length)
 {
+  int i, len, pkt_idx;
+
+  /* Don't send if not enabled. */
   if(!enabled) {
     return;
   }
 
-  data_tx_urb.flags = USB_BUFFER_IN;
-  data_tx_urb.flags |= USB_BUFFER_NOTIFY;
-  data_tx_urb.next = NULL;
-  data_tx_urb.data = bytes;
-  data_tx_urb.left = (length>64)?64:length;
-  
-  if (length > 64)
+  /* Append data to FIFO. */
+  if ((pkt_fifo_size + length) <= (PKT_FIFO_MAX))
   {
-    data_tx_urb2.flags = USB_BUFFER_IN;
-    data_tx_urb2.flags |= USB_BUFFER_NOTIFY;
-    data_tx_urb2.next = NULL;
-    data_tx_urb2.data = &bytes[64];
-    data_tx_urb2.left = (length>128)?64:length-64;
-    data_tx_urb.next = &data_tx_urb2;
-
-    if (length > 128)
+    for (i=0; i<length; i++)
     {
-      data_tx_urb3.flags = USB_BUFFER_IN;
-      data_tx_urb3.flags |= USB_BUFFER_NOTIFY;
-      data_tx_urb3.next = NULL;
-      data_tx_urb3.data = &bytes[128];
-      data_tx_urb3.left = length-128;
-      data_tx_urb2.next = &data_tx_urb3;
+      PKT_FIFO[pkt_fifo_size + i] = bytes[i];
     }
+    pkt_fifo_size += length;
   }
-  usb_submit_xmit_buffer(EPIN, &data_tx_urb);
-}
 
-
-void kb_usb_send(kb_event_t *p_event)
-{
-  uint32_t i;
-  uint32_t len;
-  uint8_t checksum;
-  static uint8_t buf[132];
-
-  /* Prepare buffer. */
-  len = p_event->payload_size + 3;
-  buf[0] = len;
-  buf[1] = p_event->command;
-  
-  for (i=0; i<(p_event->payload_size); i++)
+  /* Can we send a single packet with some padding ? */
+  pkt_idx = 0;
+  while ((pkt_fifo_size >= USB_EP2_SIZE) && (pkt_idx < 4))
   {
-    buf[2+i] = p_event->payload[i];
+    len = USB_EP2_SIZE-1;
+    memcpy(&tx_buffer[pkt_idx][1], PKT_FIFO, len);
+    tx_buffer[pkt_idx][0] = len;
+    data_tx_urb[pkt_idx].flags = USB_BUFFER_IN;
+    data_tx_urb[pkt_idx].flags |= USB_BUFFER_NOTIFY;
+    data_tx_urb[pkt_idx].data = tx_buffer[pkt_idx];
+    data_tx_urb[pkt_idx].left = USB_EP2_SIZE;
+    if (pkt_idx > 0)
+      data_tx_urb[pkt_idx-1].next = &data_tx_urb[pkt_idx];
+    else
+      data_tx_urb[pkt_idx].next = NULL;
+    //usb_submit_xmit_buffer(EPIN, &data_tx_urb);
+    
+    /* Chomp data. */
+    for (i=len; i<pkt_fifo_size; i++)
+    {
+      PKT_FIFO[i-len] = PKT_FIFO[i];
+    }
+    pkt_fifo_size -= len;
+    pkt_idx++;
   }
-  checksum = packet_compute_checksum(buf, len-1);
-  buf[2+i] = checksum;
 
-  /* Send buffer. */
-  kb_usb_send_bytes(buf, len);
+  if ((pkt_fifo_size < USB_EP2_SIZE) && (pkt_idx < 4))
+  {
+    len = pkt_fifo_size;
+    memcpy(&tx_buffer[pkt_idx][1], PKT_FIFO, len);
+    tx_buffer[pkt_idx][0] = len;
+    data_tx_urb[pkt_idx].flags = USB_BUFFER_IN;
+    data_tx_urb[pkt_idx].flags |= USB_BUFFER_NOTIFY;
+    data_tx_urb[pkt_idx].data = tx_buffer[pkt_idx];
+    data_tx_urb[pkt_idx].left = USB_EP2_SIZE;
+    data_tx_urb[pkt_idx].next = NULL;
+    if (pkt_idx > 0)
+      data_tx_urb[pkt_idx-1].next = &data_tx_urb[pkt_idx];
+    else
+      data_tx_urb[pkt_idx].next = NULL;
+    pkt_fifo_size = 0;
+  }
+  usb_submit_xmit_buffer(EPIN, &data_tx_urb[0]);
 }
-
 
 /* Callback to the input handler */
 static void input_handler(unsigned char c)
@@ -92,7 +107,7 @@ static void input_handler(unsigned char c)
         /* Parse length byte. */
         g_pkt_len = c;
         ptr = 0;
-        buf[ptr++] = (uint8_t)c;
+        rx_buffer[ptr++] = (uint8_t)c;
         g_state = KBS_WAIT_PAYLOAD;
       }
       break;
@@ -101,20 +116,20 @@ static void input_handler(unsigned char c)
       {
         if(ptr < (g_pkt_len-1))
         {
-          buf[ptr++] = (uint8_t)c;
+          rx_buffer[ptr++] = (uint8_t)c;
         }
         else
         {
-          buf[ptr++] = (uint8_t)c;
+          rx_buffer[ptr++] = (uint8_t)c;
           g_state = KBS_PACKET_RECEIVED;
 
           /* Check CRC. */
-          if (packet_is_valid(buf, g_pkt_len))
+          if (packet_is_valid(rx_buffer, g_pkt_len))
           {
             /* Command at offset 1. */
-            kb_event.command = buf[1];
+            kb_event.command = rx_buffer[1];
             kb_event.payload_size = ptr-3;
-            kb_event.payload = &buf[2];
+            kb_event.payload = &rx_buffer[2];
 
             /* Broadcast event */
             process_post(PROCESS_BROADCAST, kb_event_message, (void *)&kb_event);
@@ -185,7 +200,7 @@ const struct usb_st_device_descriptor device_descriptor =
       ENDPOINT,
       0x82,
       0x02,
-      /*USB_EP2_SIZE*/64,
+      USB_EP2_SIZE,
       0
     },
     {
@@ -193,7 +208,7 @@ const struct usb_st_device_descriptor device_descriptor =
       ENDPOINT,
       0x03,
       0x02,
-      /*USB_EP3_SIZE*/64,
+      USB_EP3_SIZE,
       0
     }
   };
@@ -209,7 +224,7 @@ queue_rx_urb(void)
   data_rx_urb.flags = USB_BUFFER_PACKET_END;    /* Make sure we are getting immediately the packet. */
   data_rx_urb.flags |= USB_BUFFER_NOTIFY;
   data_rx_urb.data = usb_rx_data;
-  data_rx_urb.left = BUFFER_SIZE;
+  data_rx_urb.left = USB_EP3_SIZE;
   data_rx_urb.next = NULL;
   usb_submit_recv_buffer(EPOUT, &data_rx_urb);
 }
@@ -225,6 +240,7 @@ do_work(void)
     /* Force state once the device is configured. */
     g_state = KBS_IDLE;
     ptr = 0;
+    pkt_fifo_size = 0;
 
     /* Enable endpoints */
     enabled = 1;
@@ -261,13 +277,14 @@ PROCESS(kb_usb_process, "Killerbee USB driver");
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(kb_usb_process, ev, data)
 {
-
+  kb_event_t *p_sendpkt;
   PROCESS_BEGIN();
 
   kb_event_message = process_alloc_event();
+  kb_sendpkt_message = process_alloc_event();
   ptr = 0;
+  pkt_fifo_size = 0;
 
-  //usb_setup();
   usb_set_global_event_process(&kb_usb_process);
   usb_set_ep_event_process(EPIN, &kb_usb_process);
   usb_set_ep_event_process(EPOUT, &kb_usb_process);
@@ -277,6 +294,21 @@ PROCESS_THREAD(kb_usb_process, ev, data)
     if(ev == PROCESS_EVENT_EXIT) {
       break;
     }
+
+    /* Do we have a packet to send ? */
+    if (ev == kb_sendpkt_message) {
+      leds_on(LEDS_RED);
+      
+      /* Got packet to send, send packet through USB endpoint 2 */
+      p_sendpkt = (kb_event_t *)data;
+      kb_usb_send_bytes(p_sendpkt->payload, p_sendpkt->payload_size);
+
+      /* Free packet resources. */
+      free(p_sendpkt->payload);
+      free(p_sendpkt);
+      leds_off(LEDS_RED);
+    }
+
     if(ev == PROCESS_EVENT_POLL) {
       do_work();
     }
@@ -291,6 +323,9 @@ void kb_usb_init(void)
   /* Initialize state. */
   g_state = KBS_IDLE;
   ptr = 0;
+
+  memset(PKT_FIFO, 0, PKT_FIFO_MAX);
+  pkt_fifo_size = 0;
 
   leds_off(LEDS_RED | LEDS_GREEN);
   process_start(&kb_usb_process, NULL);

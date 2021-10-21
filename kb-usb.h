@@ -17,11 +17,11 @@
 #include "utils.h"
 
 
-#define EPIN  0x82
-#define EPOUT 0x03
-
-#define BUFSIZE 256
-#define BUFFER_SIZE 64
+#define EPIN          0x82
+#define EPOUT         0x03
+#define RX_BUFSIZE    256
+#define BUFFER_SIZE   64
+#define PKT_FIFO_MAX  2048
 
 typedef enum {
   KBS_IDLE,
@@ -35,9 +35,8 @@ typedef struct {
   uint8_t *payload;
 } kb_event_t;
 
-PROCESS_NAME(kb_serial_process);
+PROCESS_NAME(kb_usb_process);
 
 void kb_usb_init(void);
-void kb_usb_send(kb_event_t *p_event);
 
 #endif /* __INC_USB_PROTO_H */

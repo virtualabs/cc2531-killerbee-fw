@@ -23,8 +23,8 @@ int radio_set_channel(int channel)
 
   /* Configure channel and restart Radio if necessary. */
   NETSTACK_RADIO.set_value(RADIO_PARAM_CHANNEL, channel);
-  if (g_radio_state.sniffer_enabled == SNIFFER_OFF)
-    NETSTACK_RADIO.off();
+
+  return channel;
 }
 
 
@@ -43,17 +43,12 @@ void radio_enable_sniffer(void)
 
 void radio_disable_sniffer(void)
 {
-  /* Disable RX */
-  NETSTACK_RADIO.off();
-
   /* Save sniffer state. */
   g_radio_state.sniffer_enabled = SNIFFER_OFF;
 }
 
 int radio_send_packet(void *p_packet_buffer, int packet_length)
 {
-  int ret;
-
   /* Send packet through CC2531 RF driver. */
   return NETSTACK_RADIO.send(p_packet_buffer, packet_length);
 }

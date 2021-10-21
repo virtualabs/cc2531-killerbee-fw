@@ -2,6 +2,7 @@
 #define __INC_SERIAL_PROTO_H
 
 #include "kb-usb.h"
+#include "utils.h"
 
 /**************************************************
  * Serial protocol overview
@@ -32,6 +33,7 @@ typedef struct {
 } packet_t;
 
 void proto_send_ack(command_t command);
-void proto_send_packet(uint8_t *p_packet, int packet_len);
+//void proto_send_packet(uint8_t *p_packet, int packet_len);
+void proto_send_packet(packet_t *p_pkt);
 
 #endif /* __INC_SERIAL_PROTO_H */

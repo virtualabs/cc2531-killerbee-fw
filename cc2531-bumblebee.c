@@ -54,7 +54,7 @@
 #define CC2530_RF_CHANNEL 11
 
 /* Packet buffer size: 256 - 3 bytes (length, command, crc). */
-#define PACKET_BUFFER_SIZE  (256-3)
+#define PACKET_BUFFER_SIZE  256
 
 /* RF packet buffer. */
 static unsigned char packet_buf[PACKET_BUFFER_SIZE];
@@ -180,23 +180,28 @@ PROCESS_THREAD(cc2531_rf_sniffer, ev, data)
 
   while(1)
   {
+    /* Do we have a packet in our RX buffer ? */
     if (radio_got_packet())
     {
-      pkt_size = radio_read_packet(&packet_buf[2], PACKET_BUFFER_SIZE);
+      /* Read packet from RX buffer. */
+      pkt_size = radio_read_packet(&packet_buf[2], PACKET_BUFFER_SIZE - 2);
       if (pkt_size > 0)
       {
         /* Insert RSSI and LQI. */
         packet_buf[0] = packetbuf_attr(PACKETBUF_ATTR_RSSI);
         packet_buf[1] = packetbuf_attr(PACKETBUF_ATTR_LINK_QUALITY);
 
-        /* Report packet. */
-        p_pkt = (packet_t *)malloc(sizeof(packet_t));
-        if (p_pkt != NULL)
+        /* Report packet if sniffing is enabled. */
+        if (radio_is_sniffer_enabled())
         {
-          memset(p_pkt, 0, sizeof(packet_t));
-          memcpy(p_pkt->payload, packet_buf, pkt_size+2);
-          p_pkt->size = (uint8_t)pkt_size + 2;
-          process_post(&cc2531_bumlblebee_process, event_packet_received, p_pkt);
+          p_pkt = (packet_t *)malloc(sizeof(packet_t));
+          if (p_pkt != NULL)
+          {
+            memset(p_pkt, 0, sizeof(packet_t));
+            memcpy(p_pkt->payload, packet_buf, pkt_size+2);
+            p_pkt->size = (uint8_t)pkt_size + 2;
+            process_post(&cc2531_bumlblebee_process, event_packet_received, p_pkt);
+          }
         }
       }
     }
@@ -231,9 +236,8 @@ PROCESS_THREAD(cc2531_bumlblebee_process, ev, data)
       leds_on(LEDS_GREEN);
 
       p_pkt = (packet_t *)data;
-      proto_send_packet(p_pkt->payload, p_pkt->size);
-      free(p_pkt);
-
+      proto_send_packet(p_pkt);
+      
       /* Shut off LED. */
       leds_off(LEDS_GREEN);
     } else if (ev == kb_event_message) {
