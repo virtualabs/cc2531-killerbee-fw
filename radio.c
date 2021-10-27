@@ -2,15 +2,21 @@
 
 volatile radio_state_t g_radio_state;
 
+static int gb_radio_started = 0;
 
 void radio_init(void)
 {
   /* Configure radio state. */
   g_radio_state.channel = RADIO_DEFAULT_CHANNEL;
 
-  /* Initialize CC2531 Radio peripheral. */
-  NETSTACK_RADIO.init();
-  radio_set_channel(g_radio_state.channel);
+  if (!gb_radio_started)
+  {
+    /* Initialize CC2531 Radio peripheral. */
+    NETSTACK_RADIO.init();
+    radio_set_channel(g_radio_state.channel);
+
+    gb_radio_started = 1;
+  }
 
   /* Disable radio. */
   radio_disable_sniffer();
