@@ -22,6 +22,7 @@
 #define RX_BUFSIZE    256
 #define BUFFER_SIZE   64
 #define PKT_FIFO_MAX  2048
+#define MAX_TX_URB    4
 
 typedef enum {
   KBS_IDLE,
@@ -38,5 +39,7 @@ typedef struct {
 PROCESS_NAME(kb_usb_process);
 
 void kb_usb_init(void);
+void kb_usb_reset(void);
+void kb_fifo_reset(void);
 
 #endif /* __INC_USB_PROTO_H */

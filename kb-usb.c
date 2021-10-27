@@ -2,25 +2,25 @@
 #include <stdlib.h>
 
 static USBBuffer data_rx_urb;
-static USBBuffer data_tx_urb[4];
+static USBBuffer data_tx_urb[MAX_TX_URB];
 static uint8_t usb_rx_data[USB_EP3_SIZE];
 static uint8_t enabled = 0;
 
 /* EP3 OUT rx buffer. */
 static uint8_t rx_buffer[RX_BUFSIZE];
-static int ptr;
+volatile int ptr;
 
 /* EP2 IN tx buffer. */
-static uint8_t tx_buffer[4][USB_EP2_SIZE];
+static uint8_t tx_buffer[MAX_TX_URB][USB_EP2_SIZE];
 static uint8_t xmit_buf[USB_EP2_SIZE];
 
 /* EP2 packet FIFO */
-static uint8_t PKT_FIFO[PKT_FIFO_MAX];
-static int pkt_fifo_size = 0;
+volatile uint8_t PKT_FIFO[PKT_FIFO_MAX];
+volatile int pkt_fifo_size = 0;
 
-static kb_usb_state g_state;
-static kb_event_t kb_event;
-volatile uint8_t g_pkt_len;
+volatile kb_usb_state g_state;
+volatile kb_event_t *kb_event;
+volatile int g_pkt_len;
 
 /* Custom event message. */
 process_event_t kb_event_message;
@@ -50,7 +50,7 @@ void kb_usb_send_bytes(uint8_t *bytes, int length)
 
   /* Can we send a single packet with some padding ? */
   pkt_idx = 0;
-  while ((pkt_fifo_size >= USB_EP2_SIZE) && (pkt_idx < 4))
+  while ((pkt_fifo_size >= USB_EP2_SIZE) && (pkt_idx < MAX_TX_URB))
   {
     len = USB_EP2_SIZE-1;
     memcpy(&tx_buffer[pkt_idx][1], PKT_FIFO, len);
@@ -74,7 +74,7 @@ void kb_usb_send_bytes(uint8_t *bytes, int length)
     pkt_idx++;
   }
 
-  if ((pkt_fifo_size < USB_EP2_SIZE) && (pkt_idx < 4))
+  if ((pkt_fifo_size < USB_EP2_SIZE) && (pkt_idx < MAX_TX_URB))
   {
     len = pkt_fifo_size;
     memcpy(&tx_buffer[pkt_idx][1], PKT_FIFO, len);
@@ -114,25 +114,42 @@ static void input_handler(unsigned char c)
 
     case KBS_WAIT_PAYLOAD:
       {
-        if(ptr < (g_pkt_len-1))
+        if((ptr <= g_pkt_len) && (ptr < RX_BUFSIZE))
         {
           rx_buffer[ptr++] = (uint8_t)c;
         }
-        else
+
+        if (ptr == g_pkt_len)
         {
-          rx_buffer[ptr++] = (uint8_t)c;
+          //rx_buffer[ptr++] = (uint8_t)c;
           g_state = KBS_PACKET_RECEIVED;
 
           /* Check CRC. */
           if (packet_is_valid(rx_buffer, g_pkt_len))
           {
-            /* Command at offset 1. */
-            kb_event.command = rx_buffer[1];
-            kb_event.payload_size = ptr-3;
-            kb_event.payload = &rx_buffer[2];
+            /* Allocate a KB event. */
+            kb_event = (kb_event_t *)malloc(sizeof(kb_event_t));
+            if (kb_event != NULL)
+            {
+              /* Command at offset 1. */
+              kb_event->command = rx_buffer[1];
+              kb_event->payload_size = g_pkt_len-3;
+              
+              /* Allocate a new payload buffer. */
+              kb_event->payload = (uint8_t *)malloc(sizeof(uint8_t) * kb_event->payload_size);
+              if (kb_event->payload != NULL)
+              {
+                /* Copy payload. */
+                memcpy(kb_event->payload, &rx_buffer[2], kb_event->payload_size);
+              }
+              else
+              {
+                kb_event->payload = NULL;
+              }
 
-            /* Broadcast event */
-            process_post(PROCESS_BROADCAST, kb_event_message, (void *)&kb_event);
+              /* Broadcast event */
+              process_post(PROCESS_BROADCAST, kb_event_message, (void *)kb_event);
+            }
           }
 
           /* Wait for another packet. */
@@ -261,8 +278,8 @@ do_work(void)
   if((events & USB_EP_EVENT_NOTIFICATION)
      && !(data_rx_urb.flags & USB_BUFFER_SUBMITTED)) {
     if(!(data_rx_urb.flags & USB_BUFFER_FAILED)) {
-      uint8_t len;
-      uint8_t i;
+      int len;
+      int i;
 
       len = BUFFER_SIZE - data_rx_urb.left;
       for(i = 0; i < len; i++) {
@@ -317,16 +334,30 @@ PROCESS_THREAD(kb_usb_process, ev, data)
   PROCESS_END();
 }
 
+void kb_fifo_reset(void)
+{
+  memset(PKT_FIFO, 0, PKT_FIFO_MAX);
+  pkt_fifo_size = 0;
+}
 
-void kb_usb_init(void)
+void kb_usb_reset(void)
 {
   /* Initialize state. */
   g_state = KBS_IDLE;
   ptr = 0;
 
-  memset(PKT_FIFO, 0, PKT_FIFO_MAX);
-  pkt_fifo_size = 0;
+  /* Reset data FIFO. */
+  kb_fifo_reset();
+}
 
+void kb_usb_init(void)
+{
+  /* Reset USB processing globals and FIFO. */
+  kb_usb_reset();
+
+  /* Switch off LEDs. */
   leds_off(LEDS_RED | LEDS_GREEN);
+
+  /* Start USB task. */
   process_start(&kb_usb_process, NULL);
 }
