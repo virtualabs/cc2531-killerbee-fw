@@ -80,13 +80,15 @@ void dispatch_command(kb_event_t *p_event)
     /* Initialize. */
     case CMD_INIT:
       {
+        /* Reset USB (FIFO and RX state). */
+        kb_usb_reset();
 
         /* Init radio. */
         radio_init();
         radio_disable_sniffer();
 
         /* Send ACK. */
-        proto_send_ack(CMD_INIT);
+        proto_send_ack(CMD_INIT_ACK);
       }
       break;
 
@@ -94,14 +96,18 @@ void dispatch_command(kb_event_t *p_event)
     case CMD_SET_CHANNEL:
       {
         /* Check parameter size (must be 1 byte) */
-        if (p_event->payload_size == 1)
+        if (p_event->payload_size >= 1)
         {
           /* Change channel. */
           channel = p_event->payload[0];
           radio_set_channel(channel);
 
           /* Send ACK. */
-          proto_send_ack(CMD_SET_CHANNEL);
+          proto_send_ack(CMD_SET_CHANNEL_ACK);
+        }
+        else
+        {
+          proto_send(CMD_ERR, p_event->payload, p_event->payload_size);
         }
       }
       break;
@@ -119,10 +125,14 @@ void dispatch_command(kb_event_t *p_event)
           radio_send_packet(p_event->payload, p_event->payload_size);
 
           /* Send ACK. */
-          proto_send_ack(CMD_SEND_PKT);
+          proto_send_ack(CMD_SEND_PKT_ACK);
 
           /* Shut off LED. */
           leds_off(LEDS_GREEN);
+        }
+        else
+        {
+          proto_send_ack(CMD_ERR);
         }
       }
       break;
@@ -151,6 +161,9 @@ void dispatch_command(kb_event_t *p_event)
       break;
 
     default:
+      {
+        proto_send_ack(CMD_ERR);
+      }
       break;
 
   }
@@ -242,7 +255,16 @@ PROCESS_THREAD(cc2531_bumlblebee_process, ev, data)
       leds_off(LEDS_GREEN);
     } else if (ev == kb_event_message) {
       p_event = (kb_event_t *)data;
-      dispatch_command(p_event);
+
+      if (p_event != NULL)
+      {
+        dispatch_command(p_event);
+      
+        /* Free kb_event_t structure. */
+        if (p_event->payload != NULL)
+          free(p_event->payload);
+        free(p_event);
+      }
     }
   }
 
