@@ -1,0 +1,101 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Orion Parker <331738732+orionparker33@users.noreply.github.com>
+Date: Sun, 18 Oct 2026 04:57:06 +0100
+Subject: [PATCH] cc253x: build with SDCC 4.5
+
+- Makefile.cc253x: add --fsigned-char. Contiki 3.0's cc253x code relies on
+  signed plain char. SDCC 3.7 and later default to unsigned char, and the
+  resulting CC2531 image powers the USB pull-up but never answers EP0
+  (host: "device descriptor read/64, error -110"). Reproduced with SDCC
+  3.8.0, 4.0.0 and 4.5.0; this flag alone fixes it.
+- Makefile.customrules-cc253x: pass -MF before the dependency file name.
+  SDCC 4.5's gcc-style sdcpp otherwise treats the outputs as inputs and
+  deletes source files in the build tree. (SDCC <= 4.0 needs the old
+  -Wp,-MMD,<dep> form.)
+- core/sys/clock.h: skip the deprecated clock_delay(unsigned int) prototype
+  when the CPU maps clock_delay to clock_delay_usec(uint16_t); SDCC's
+  uint16_t is unsigned short, so the two declarations conflict.
+- platform/cc2530dk: int putchar(int), the SDCC >= 3.7 prototype.
+---
+ core/sys/clock.h                       | 2 ++
+ cpu/cc253x/Makefile.cc253x             | 2 +-
+ cpu/cc253x/Makefile.customrules-cc253x | 2 +-
+ platform/cc2530dk/debug.h              | 2 +-
+ platform/cc2530dk/putchar.c            | 6 ++++--
+ 5 files changed, 9 insertions(+), 5 deletions(-)
+
+diff --git a/core/sys/clock.h b/core/sys/clock.h
+index 4cbfdb2..32112b0 100644
+--- a/core/sys/clock.h
++++ b/core/sys/clock.h
+@@ -138,7 +138,9 @@ void clock_delay_usec(uint16_t dt);
+  */
+ int clock_fine_max(void);
+ unsigned short clock_fine(void);
++#ifndef clock_delay /* cc253x maps it to clock_delay_usec(uint16_t) */
+ void clock_delay(unsigned int delay);
++#endif
+ 
+ #endif /* CLOCK_H_ */
+ 
+diff --git a/cpu/cc253x/Makefile.cc253x b/cpu/cc253x/Makefile.cc253x
+index e9aaa8c..a724cb6 100644
+--- a/cpu/cc253x/Makefile.cc253x
++++ b/cpu/cc253x/Makefile.cc253x
+@@ -14,7 +14,7 @@ SREC_FLAGS = -disable_sequence_warnings
+ BANK_ALLOC = $(CONTIKI_CPU)/bank-alloc.py
+ SEGMENT_RULES = $(OBJECTDIR)/segment.rules
+ 
+-CFLAGS  += --model-$(MEMORY_MODEL) --stack-auto --std-c99
++CFLAGS  += --model-$(MEMORY_MODEL) --stack-auto --std-c99 --fsigned-char
+ CFLAGS  +=  -DCC2530_LAST_FLASH_BANK=$(HIGH_FLASH_BANK)
+ CFLAGS  += --fomit-frame-pointer
+ 
+diff --git a/cpu/cc253x/Makefile.customrules-cc253x b/cpu/cc253x/Makefile.customrules-cc253x
+index e30b279..2a196be 100644
+--- a/cpu/cc253x/Makefile.customrules-cc253x
++++ b/cpu/cc253x/Makefile.customrules-cc253x
+@@ -14,7 +14,7 @@ CUSTOM_RULE_ALLOBJS_TO_TARGETLIB=1
+ 
+ $(OBJECTDIR)/%.rel: %.c $(SEGMENT_RULES) | $(OBJECTDIR)
+ 	$(TRACE_CC)
+-	$(Q)$(CC) $(call c_seg,$<,$@) $(CFLAGS) -c $< -o $@ -Wp,-MMD,$(@:.rel=.d),-MQ,$@
++	$(Q)$(CC) $(call c_seg,$<,$@) $(CFLAGS) -c $< -o $@ -Wp,-MMD,-MF,$(@:.rel=.d),-MQ,$@
+ 	@$(FINALIZE_SDCC_DEPENDENCY)
+ 
+ contiki-$(TARGET).lib: $(CONTIKI_OBJECTFILES) $(PROJECT_OBJECTFILES) \
+diff --git a/platform/cc2530dk/debug.h b/platform/cc2530dk/debug.h
+index 5929658..7c57d29 100644
+--- a/platform/cc2530dk/debug.h
++++ b/platform/cc2530dk/debug.h
+@@ -46,7 +46,7 @@
+ #include "8051def.h"
+ #include "dev/uart1.h"
+ 
+-void putchar(char c);
++int putchar(int c); /* SDCC >= 3.7 prototype */
+ void putstring(char *s);
+ void puthex(uint8_t c);
+ void putbin(uint8_t c);
+diff --git a/platform/cc2530dk/putchar.c b/platform/cc2530dk/putchar.c
+index 2f828e5..95c8aa7 100644
+--- a/platform/cc2530dk/putchar.c
++++ b/platform/cc2530dk/putchar.c
+@@ -9,8 +9,8 @@
+ #include "contiki-conf.h"
+ #include "dev/io-arch.h"
+ /*---------------------------------------------------------------------------*/
+-void
+-putchar(char c)
++int
++putchar(int c)
+ {
+ #if SLIP_ARCH_CONF_ENABLE
+ #define SLIP_END     0300
+@@ -35,4 +35,6 @@ putchar(char c)
+     debug_frame = 0;
+   }
+ #endif
++
++  return c;
+ }

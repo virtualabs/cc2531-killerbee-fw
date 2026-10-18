@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Orion Parker <331738732+orionparker33@users.noreply.github.com>
+Date: Sun, 18 Oct 2026 04:57:06 +0100
+Subject: [PATCH] cc253x/usb: ep_tx: do not overwrite a loaded IN FIFO
+
+The CC253x IN endpoint FIFO is single buffered. If ep_tx() runs while the
+previous packet is still waiting for the host (INPKT_RDY set), it used to
+write the next packet over it. Leave the buffer queued instead; the IN
+interrupt sends it once the host has collected the previous packet.
+---
+ cpu/cc253x/usb/usb-arch.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/cpu/cc253x/usb/usb-arch.c b/cpu/cc253x/usb/usb-arch.c
+index ae7410d..74d18e3 100644
+--- a/cpu/cc253x/usb/usb-arch.c
++++ b/cpu/cc253x/usb/usb-arch.c
+@@ -1129,6 +1129,14 @@ ep_tx(uint8_t ep_hw)
+     return 0;
+   }
+ 
++  /*
++   * The IN FIFO is single buffered: if the previous packet has not been
++   * collected yet, keep the buffer queued. The IN interrupt sends it.
++   */
++  if(USBCSIL & USBCSIL_INPKT_RDY) {
++    return 0;
++  }
++
+   while(ep->buffer) {
+     unsigned int copy;
+ 

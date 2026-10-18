@@ -1,8 +1,9 @@
 #include "kb-usb.h"
+#include "proto.h"
 #include <stdlib.h>
 
 static USBBuffer data_rx_urb;
-static USBBuffer data_tx_urb[MAX_TX_URB];
+static USBBuffer data_tx_urb;
 static uint8_t usb_rx_data[USB_EP3_SIZE];
 static uint8_t enabled = 0;
 
@@ -10,13 +11,17 @@ static uint8_t enabled = 0;
 static uint8_t rx_buffer[RX_BUFSIZE];
 volatile int ptr;
 
-/* EP2 IN tx buffer. */
-static uint8_t tx_buffer[MAX_TX_URB][USB_EP2_SIZE];
-static uint8_t xmit_buf[USB_EP2_SIZE];
+/* EP2 IN tx buffer: one 64-byte packet [chunk_len][chunk][padding]. */
+static uint8_t tx_buffer[USB_EP2_SIZE];
 
-/* EP2 packet FIFO */
-volatile uint8_t PKT_FIFO[PKT_FIFO_MAX];
-volatile int pkt_fifo_size = 0;
+/*
+ * EP2 IN message FIFO (ring buffer). Only touched from process context; the
+ * USB interrupt only ever sees data_tx_urb/tx_buffer.
+ */
+static uint8_t PKT_FIFO[PKT_FIFO_MAX];
+static uint16_t fifo_head = 0;      /* next byte to send */
+static uint16_t fifo_count = 0;     /* bytes queued */
+static uint8_t fifo_msg_left = 0;   /* bytes left of the message being sent */
 
 volatile kb_usb_state g_state;
 volatile kb_event_t *kb_event;
@@ -29,68 +34,69 @@ process_event_t kb_event_message;
 process_event_t kb_sendpkt_message;
 
 
+/*
+ * Build the next IN packet from the FIFO and submit it, but only when the
+ * previous one has left data_tx_urb (USB_BUFFER_SUBMITTED cleared by the
+ * USB interrupt). A submitted URB is never modified.
+ */
+static void kb_usb_tx_kick(void)
+{
+  uint8_t len, i, c;
+
+  if(!enabled || (data_tx_urb.flags & USB_BUFFER_SUBMITTED) || (fifo_count == 0)) {
+    return;
+  }
+
+  len = (fifo_count > (USB_EP2_SIZE-1)) ? (USB_EP2_SIZE-1) : (uint8_t)fifo_count;
+  for (i=0; i<len; i++)
+  {
+    c = PKT_FIFO[fifo_head];
+    fifo_head = (fifo_head + 1) & (PKT_FIFO_MAX - 1);
+    if (fifo_msg_left == 0)
+      fifo_msg_left = c;  /* length byte of the next message */
+    fifo_msg_left--;
+    tx_buffer[1 + i] = c;
+  }
+  fifo_count -= len;
+  tx_buffer[0] = len;
+  memset(&tx_buffer[1 + len], 0, (USB_EP2_SIZE-1) - len);
+
+  data_tx_urb.flags = USB_BUFFER_IN | USB_BUFFER_NOTIFY;
+  data_tx_urb.data = tx_buffer;
+  data_tx_urb.left = USB_EP2_SIZE;
+  data_tx_urb.next = NULL;
+  usb_submit_xmit_buffer(EPIN, &data_tx_urb);
+}
+
 void kb_usb_send_bytes(uint8_t *bytes, int length)
 {
-  int i, len, pkt_idx;
+  uint16_t tail, limit;
+  int i;
 
   /* Don't send if not enabled. */
   if(!enabled) {
     return;
   }
 
-  /* Append data to FIFO. */
-  if ((pkt_fifo_size + length) <= (PKT_FIFO_MAX))
-  {
-    for (i=0; i<length; i++)
-    {
-      PKT_FIFO[pkt_fifo_size + i] = bytes[i];
-    }
-    pkt_fifo_size += length;
-  }
+  /*
+   * Append the whole message or drop it. Captured frames leave headroom so
+   * that command ACKs still fit when the host drains slowly.
+   */
+  limit = PKT_FIFO_MAX;
+  if ((length > 1) && (bytes[1] == CMD_GOT_PKT))
+    limit -= PKT_FIFO_RESERVE;
+  if ((length <= 0) || ((fifo_count + length) > limit))
+    return;
 
-  /* Can we send a single packet with some padding ? */
-  pkt_idx = 0;
-  while ((pkt_fifo_size >= USB_EP2_SIZE) && (pkt_idx < MAX_TX_URB))
+  tail = (fifo_head + fifo_count) & (PKT_FIFO_MAX - 1);
+  for (i=0; i<length; i++)
   {
-    len = USB_EP2_SIZE-1;
-    memcpy(&tx_buffer[pkt_idx][1], PKT_FIFO, len);
-    tx_buffer[pkt_idx][0] = len;
-    data_tx_urb[pkt_idx].flags = USB_BUFFER_IN;
-    data_tx_urb[pkt_idx].flags |= USB_BUFFER_NOTIFY;
-    data_tx_urb[pkt_idx].data = tx_buffer[pkt_idx];
-    data_tx_urb[pkt_idx].left = USB_EP2_SIZE;
-    if (pkt_idx > 0)
-      data_tx_urb[pkt_idx-1].next = &data_tx_urb[pkt_idx];
-    else
-      data_tx_urb[pkt_idx].next = NULL;
-    //usb_submit_xmit_buffer(EPIN, &data_tx_urb);
-    
-    /* Chomp data. */
-    for (i=len; i<pkt_fifo_size; i++)
-    {
-      PKT_FIFO[i-len] = PKT_FIFO[i];
-    }
-    pkt_fifo_size -= len;
-    pkt_idx++;
+    PKT_FIFO[tail] = bytes[i];
+    tail = (tail + 1) & (PKT_FIFO_MAX - 1);
   }
+  fifo_count += length;
 
-  if ((pkt_fifo_size < USB_EP2_SIZE) && (pkt_idx < MAX_TX_URB))
-  {
-    len = pkt_fifo_size;
-    memcpy(&tx_buffer[pkt_idx][1], PKT_FIFO, len);
-    tx_buffer[pkt_idx][0] = len;
-    data_tx_urb[pkt_idx].flags = USB_BUFFER_IN;
-    data_tx_urb[pkt_idx].flags |= USB_BUFFER_NOTIFY;
-    data_tx_urb[pkt_idx].data = tx_buffer[pkt_idx];
-    data_tx_urb[pkt_idx].left = USB_EP2_SIZE;
-    data_tx_urb[pkt_idx].next = NULL;
-    if (pkt_idx > 0)
-      data_tx_urb[pkt_idx-1].next = &data_tx_urb[pkt_idx];
-    else
-      data_tx_urb[pkt_idx].next = NULL;
-    pkt_fifo_size = 0;
-  }
-  usb_submit_xmit_buffer(EPIN, &data_tx_urb[0]);
+  kb_usb_tx_kick();
 }
 
 /* Callback to the input handler */
@@ -134,21 +140,27 @@ static void input_handler(unsigned char c)
               /* Command at offset 1. */
               kb_event->command = rx_buffer[1];
               kb_event->payload_size = g_pkt_len-3;
-              
-              /* Allocate a new payload buffer. */
-              kb_event->payload = (uint8_t *)malloc(sizeof(uint8_t) * kb_event->payload_size);
-              if (kb_event->payload != NULL)
+              kb_event->payload = NULL;
+
+              if (kb_event->payload_size > 0)
               {
-                /* Copy payload. */
-                memcpy(kb_event->payload, &rx_buffer[2], kb_event->payload_size);
-              }
-              else
-              {
-                kb_event->payload = NULL;
+                /* Allocate a new payload buffer. */
+                kb_event->payload = (uint8_t *)malloc(sizeof(uint8_t) * kb_event->payload_size);
+                if (kb_event->payload != NULL)
+                {
+                  /* Copy payload. */
+                  memcpy(kb_event->payload, &rx_buffer[2], kb_event->payload_size);
+                }
               }
 
-              /* Broadcast event */
-              process_post(PROCESS_BROADCAST, kb_event_message, (void *)kb_event);
+              /* Broadcast event, or drop the command if we are out of memory. */
+              if (((kb_event->payload_size > 0) && (kb_event->payload == NULL)) ||
+                  (process_post(PROCESS_BROADCAST, kb_event_message, (void *)kb_event) != PROCESS_ERR_OK))
+              {
+                if (kb_event->payload != NULL)
+                  free(kb_event->payload);
+                free((void *)kb_event);
+              }
             }
           }
 
@@ -179,7 +191,7 @@ const struct usb_st_device_descriptor device_descriptor =
     0x0000,
     1,
     2,
-    0,
+    3, /* iSerialNumber: chip IEEE address (usb-serial.c) */
     1
   };
 
@@ -252,22 +264,26 @@ do_work(void)
   unsigned int events;
 
   events = usb_get_global_events();
+  if(events & USB_EVENT_RESET) {
+    enabled = 0;
+  }
   if(events & USB_EVENT_CONFIG) {
 
     /* Force state once the device is configured. */
     g_state = KBS_IDLE;
     ptr = 0;
-    pkt_fifo_size = 0;
+    fifo_count = 0;
+    fifo_msg_left = 0;
 
     /* Enable endpoints */
-    enabled = 1;
     usb_setup_bulk_endpoint(EPIN);
     usb_setup_bulk_endpoint(EPOUT);
 
+    /* Endpoint setup dropped any queued buffer: data_tx_urb is ours again. */
+    data_tx_urb.flags = 0;
+    enabled = 1;
+
     queue_rx_urb();
-  }
-  if(events & USB_EVENT_RESET) {
-    enabled = 0;
   }
 
   if(!enabled) {
@@ -288,6 +304,10 @@ do_work(void)
     }
     queue_rx_urb();
   }
+
+  /* EP2 IN packet collected (or EP idle): send the next chunk. */
+  usb_get_ep_events(EPIN);
+  kb_usb_tx_kick();
 }
 
 PROCESS(kb_usb_process, "Killerbee USB driver");
@@ -300,7 +320,6 @@ PROCESS_THREAD(kb_usb_process, ev, data)
   kb_event_message = process_alloc_event();
   kb_sendpkt_message = process_alloc_event();
   ptr = 0;
-  pkt_fifo_size = 0;
 
   usb_set_global_event_process(&kb_usb_process);
   usb_set_ep_event_process(EPIN, &kb_usb_process);
@@ -336,8 +355,8 @@ PROCESS_THREAD(kb_usb_process, ev, data)
 
 void kb_fifo_reset(void)
 {
-  memset(PKT_FIFO, 0, PKT_FIFO_MAX);
-  pkt_fifo_size = 0;
+  /* Drop queued messages, but finish the one already partly sent. */
+  fifo_count = (fifo_count < fifo_msg_left) ? fifo_count : fifo_msg_left;
 }
 
 void kb_usb_reset(void)

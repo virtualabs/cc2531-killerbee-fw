@@ -8,4 +8,13 @@ all: $(CONTIKI_PROJECT)
 
 CONTIKI = ./contiki
 CONTIKI_WITH_RIME = 1
+
+# The contiki submodule needs patches/contiki/ (scripts/apply-contiki-patches.sh).
+# Without --fsigned-char, SDCC >= 3.7 builds an image that never answers USB.
+ifeq ($(filter clean,$(MAKECMDGOALS)),)
+ifeq ($(shell grep -c -e --fsigned-char $(CONTIKI)/cpu/cc253x/Makefile.cc253x 2>/dev/null),0)
+$(error contiki is not patched: run scripts/apply-contiki-patches.sh (see README.md))
+endif
+endif
+
 include $(CONTIKI)/Makefile.include

@@ -21,8 +21,8 @@
 #define EPOUT         0x03
 #define RX_BUFSIZE    256
 #define BUFFER_SIZE   64
-#define PKT_FIFO_MAX  2048
-#define MAX_TX_URB    4
+#define PKT_FIFO_MAX  2048  /* must be a power of two */
+#define PKT_FIFO_RESERVE  64  /* FIFO bytes kept free for command ACKs */
 
 typedef enum {
   KBS_IDLE,

@@ -73,6 +73,7 @@ extern process_event_t kb_event_message;
 void dispatch_command(kb_event_t *p_event)
 {
   uint8_t channel;
+  uint8_t tx_status;
 
   /* Switch on command. */
   switch(p_event->command)
@@ -122,10 +123,14 @@ void dispatch_command(kb_event_t *p_event)
           leds_on(LEDS_GREEN);
 
           /* Send packet. */
-          radio_send_packet(p_event->payload, p_event->payload_size);
+          tx_status = (uint8_t)radio_send_packet(p_event->payload, p_event->payload_size);
 
-          /* Send ACK. */
-          proto_send_ack(CMD_SEND_PKT_ACK);
+          /*
+           * Send ACK with the radio transmit() result: RADIO_TX_OK (0),
+           * RADIO_TX_ERR (1) or RADIO_TX_COLLISION (2, CCA busy or RX in progress).
+           * Upstream 2.1r1 sent an empty ACK whatever the result.
+           */
+          proto_send(CMD_SEND_PKT_ACK, &tx_status, 1);
 
           /* Shut off LED. */
           leds_off(LEDS_GREEN);
@@ -213,7 +218,8 @@ PROCESS_THREAD(cc2531_rf_sniffer, ev, data)
             memset(p_pkt, 0, sizeof(packet_t));
             memcpy(p_pkt->payload, packet_buf, pkt_size+2);
             p_pkt->size = (uint8_t)pkt_size + 2;
-            process_post(&cc2531_bumlblebee_process, event_packet_received, p_pkt);
+            if (process_post(&cc2531_bumlblebee_process, event_packet_received, p_pkt) != PROCESS_ERR_OK)
+              free(p_pkt);
           }
         }
       }

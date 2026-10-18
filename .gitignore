@@ -1,0 +1,8 @@
+# Build outputs (make, scripts/build.sh)
+/obj_cc2530dk/
+/cc2531-bumblebee.cc2530dk
+/cc2531-bumblebee.hex
+/cc2531-bumblebee.lk
+/cc2531-bumblebee.map
+/cc2531-bumblebee.mem
+/contiki-cc2530dk.lib
